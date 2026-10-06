@@ -276,11 +276,15 @@ export default function InternDashboard() {
 
     const savedIntern = interns.find((intern) => {
       const internEmail = normalize(intern.email);
+      const internUserId = String(
+        intern.userId || intern.user_id || ""
+      );
 
       return (
         (currentEmail && internEmail === currentEmail) ||
         (currentUserId &&
-          String(intern.id || "") === currentUserId)
+          internUserId &&
+          internUserId === currentUserId)
       );
     });
 
@@ -290,6 +294,7 @@ export default function InternDashboard() {
 
     return {
       id: currentUser.id,
+      userId: currentUser.id,
       name: currentUser.name,
       email: currentUser.email,
       role: currentUser.role || "intern",
