@@ -19,6 +19,7 @@ import {
   getStore,
   subscribeToStore,
 } from "../../data/store";
+import { logout } from "../../auth/auth";
 
 function AdminDashboard() {
   const navigate = useNavigate();
@@ -135,8 +136,9 @@ function AdminDashboard() {
       .slice(0, 5);
   }, [store]);
 
-  const handleLogout = () => {
-    navigate("/login");
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login", { replace: true });
   };
 
   const openNotifications = () => {

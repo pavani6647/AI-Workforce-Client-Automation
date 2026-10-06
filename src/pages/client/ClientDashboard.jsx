@@ -34,7 +34,8 @@ import {
 export default function ClientDashboard() {
   const navigate = useNavigate();
 
-  const currentUser = getCurrentUser();
+  const [currentUser, setCurrentUser] = useState(null);
+  const [checkingUser, setCheckingUser] = useState(true);
 
   const CURRENT_CLIENT =
     currentUser?.name || "ABC Technologies";
@@ -59,14 +60,34 @@ export default function ClientDashboard() {
   });
 
   useEffect(() => {
-    return subscribeToStore(setStore);
-  }, []);
+    let active = true;
+
+    const loadCurrentUser = async () => {
+      const user = await getCurrentUser();
+
+      if (!active) {
+        return;
+      }
+
+      if (!user || user.role !== "client") {
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      setCurrentUser(user);
+      setCheckingUser(false);
+    };
+
+    loadCurrentUser();
+
+    return () => {
+      active = false;
+    };
+  }, [navigate]);
 
   useEffect(() => {
-    if (!currentUser) {
-      navigate("/login", { replace: true });
-    }
-  }, [currentUser, navigate]);
+    return subscribeToStore(setStore);
+  }, []);
 
   const clientProjects = useMemo(() => {
     return (store.projects || []).filter(
@@ -157,10 +178,6 @@ export default function ClientDashboard() {
     }, 50);
   };
 
-  // =========================================================
-  // CLIENT → ADMIN : SUBMIT REQUIREMENT
-  // =========================================================
-
   const handleRequirementSubmit = (event) => {
     event.preventDefault();
 
@@ -221,10 +238,6 @@ export default function ClientDashboard() {
     setShowRequirementModal(false);
   };
 
-  // =========================================================
-  // CLIENT → INTERN : APPROVE DELIVERABLE
-  // =========================================================
-
   const handleApproveDeliverable = (deliverableId) => {
     const targetDeliverable = clientDeliverables.find(
       (deliverable) => deliverable.id === deliverableId
@@ -270,10 +283,6 @@ export default function ClientDashboard() {
         : current.notifications || [],
     }));
   };
-
-  // =========================================================
-  // CLIENT → INTERN : REQUEST CHANGES
-  // =========================================================
 
   const handleRequestChanges = (event) => {
     event.preventDefault();
@@ -327,10 +336,6 @@ export default function ClientDashboard() {
     setShowFeedbackModal(false);
   };
 
-  // =========================================================
-  // SEND MESSAGE
-  // =========================================================
-
   const handleSendMessage = (event) => {
     event.preventDefault();
 
@@ -352,12 +357,8 @@ export default function ClientDashboard() {
     setShowMessageModal(false);
   };
 
-  // =========================================================
-  // LOGOUT
-  // =========================================================
-
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate("/login", { replace: true });
   };
 
@@ -398,23 +399,27 @@ export default function ClientDashboard() {
     }
   };
 
+  if (checkingUser) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" />
+          <p className="text-sm text-slate-500">
+            Checking authentication...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="client-dashboard">
-
-      {/* =====================================================
-          MOBILE OVERLAY
-      ====================================================== */}
-
       {mobileOpen && (
         <div
           className="mobile-overlay"
           onClick={() => setMobileOpen(false)}
         />
       )}
-
-      {/* =====================================================
-          SIDEBAR
-      ====================================================== */}
 
       <aside
         className={`client-sidebar ${
@@ -507,14 +512,7 @@ export default function ClientDashboard() {
         </div>
       </aside>
 
-      {/* =====================================================
-          MAIN CONTENT
-      ====================================================== */}
-
       <main className="client-main">
-
-        {/* TOP BAR */}
-
         <header className="client-topbar">
           <button
             className="mobile-menu-button"
@@ -552,12 +550,7 @@ export default function ClientDashboard() {
           </div>
         </header>
 
-        {/* =====================================================
-            DASHBOARD
-        ====================================================== */}
-
         <section id="dashboard" className="client-section dashboard-section">
-
           <div className="welcome-card">
             <div>
               <span className="welcome-label">
@@ -581,10 +574,7 @@ export default function ClientDashboard() {
             </div>
           </div>
 
-          {/* STATS */}
-
           <div className="stats-grid">
-
             <div className="stat-card">
               <div className="stat-icon">
                 <FolderKanban size={21} />
@@ -628,21 +618,14 @@ export default function ClientDashboard() {
                 <strong>{pendingDeliverables}</strong>
               </div>
             </div>
-
           </div>
 
-          {/* PROJECT OVERVIEW */}
-
           <div className="dashboard-grid">
-
             <div className="dashboard-card project-overview-card">
-
               <div className="card-header">
                 <div>
                   <h3>Project Overview</h3>
-                  <p>
-                    Current status of your projects
-                  </p>
+                  <p>Current status of your projects</p>
                 </div>
 
                 <button
@@ -655,7 +638,6 @@ export default function ClientDashboard() {
               </div>
 
               <div className="project-overview-list">
-
                 {clientProjects.length === 0 ? (
                   <div className="empty-state">
                     <FolderKanban size={30} />
@@ -671,13 +653,9 @@ export default function ClientDashboard() {
                         key={project.id}
                       >
                         <div className="project-item-top">
-
                           <div>
                             <strong>{project.name}</strong>
-
-                            <span>
-                              {project.status}
-                            </span>
+                            <span>{project.status}</span>
                           </div>
 
                           <strong>{progress}%</strong>
@@ -710,25 +688,18 @@ export default function ClientDashboard() {
                     );
                   })
                 )}
-
               </div>
             </div>
 
-            {/* QUICK ACTIONS */}
-
             <div className="dashboard-card quick-actions-card">
-
               <div className="card-header">
                 <div>
                   <h3>Quick Actions</h3>
-                  <p>
-                    Common client actions
-                  </p>
+                  <p>Common client actions</p>
                 </div>
               </div>
 
               <div className="quick-actions">
-
                 <button
                   onClick={() =>
                     setShowRequirementModal(true)
@@ -766,25 +737,15 @@ export default function ClientDashboard() {
 
                   <ChevronRight size={18} />
                 </button>
-
               </div>
             </div>
-
           </div>
         </section>
 
-        {/* =====================================================
-            PROJECTS
-        ====================================================== */}
-
         <section id="projects" className="client-section">
-
           <div className="section-heading">
-
             <div>
-              <span className="section-label">
-                PROJECTS
-              </span>
+              <span className="section-label">PROJECTS</span>
 
               <h2>Your Projects</h2>
 
@@ -792,11 +753,9 @@ export default function ClientDashboard() {
                 Monitor project progress and task activity.
               </p>
             </div>
-
           </div>
 
           <div className="projects-grid">
-
             {clientProjects.length === 0 ? (
               <div className="empty-card">
                 <FolderKanban size={35} />
@@ -826,7 +785,6 @@ export default function ClientDashboard() {
                     key={project.id}
                   >
                     <div className="project-card-header">
-
                       <div className="project-card-icon">
                         <FolderKanban size={21} />
                       </div>
@@ -838,13 +796,11 @@ export default function ClientDashboard() {
                       >
                         {project.status}
                       </span>
-
                     </div>
 
                     <h3>{project.name}</h3>
 
                     <div className="project-meta">
-
                       <span>
                         Priority:
                         <strong
@@ -862,11 +818,9 @@ export default function ClientDashboard() {
                           {project.deadline || "Not set"}
                         </strong>
                       </span>
-
                     </div>
 
                     <div className="project-progress">
-
                       <div className="progress-label">
                         <span>Progress</span>
                         <strong>{progress}%</strong>
@@ -880,11 +834,9 @@ export default function ClientDashboard() {
                           }}
                         />
                       </div>
-
                     </div>
 
                     <div className="project-footer">
-
                       <span>
                         {completedTasks}/{projectTasks.length}{" "}
                         tasks completed
@@ -893,24 +845,16 @@ export default function ClientDashboard() {
                       <span>
                         Team: {project.teamSize || 0}
                       </span>
-
                     </div>
                   </div>
                 );
               })
             )}
-
           </div>
         </section>
 
-        {/* =====================================================
-            REQUIREMENTS
-        ====================================================== */}
-
         <section id="requirements" className="client-section">
-
           <div className="section-heading">
-
             <div>
               <span className="section-label">
                 REQUIREMENTS
@@ -932,11 +876,9 @@ export default function ClientDashboard() {
               <Plus size={18} />
               New Requirement
             </button>
-
           </div>
 
           <div className="dashboard-card">
-
             {clientRequirements.length === 0 ? (
               <div className="empty-state large">
                 <ClipboardList size={40} />
@@ -959,14 +901,12 @@ export default function ClientDashboard() {
               </div>
             ) : (
               <div className="requirements-list">
-
                 {clientRequirements.map((requirement) => (
                   <div
                     className="requirement-item"
                     key={requirement.id}
                   >
                     <div className="requirement-main">
-
                       <div className="requirement-icon">
                         <ClipboardList size={19} />
                       </div>
@@ -990,11 +930,9 @@ export default function ClientDashboard() {
                           </span>
                         </div>
                       </div>
-
                     </div>
 
                     <div className="requirement-side">
-
                       <span
                         className={`priority-badge ${getPriorityClass(
                           requirement.priority
@@ -1010,25 +948,16 @@ export default function ClientDashboard() {
                       >
                         {requirement.status}
                       </span>
-
                     </div>
                   </div>
                 ))}
-
               </div>
             )}
-
           </div>
         </section>
 
-        {/* =====================================================
-            DELIVERABLES
-        ====================================================== */}
-
         <section id="deliverables" className="client-section">
-
           <div className="section-heading">
-
             <div>
               <span className="section-label">
                 DELIVERABLES
@@ -1040,11 +969,9 @@ export default function ClientDashboard() {
                 Review deliverables submitted by interns.
               </p>
             </div>
-
           </div>
 
           <div className="dashboard-card">
-
             {clientDeliverables.length === 0 ? (
               <div className="empty-state large">
                 <FileCheck2 size={40} />
@@ -1057,25 +984,20 @@ export default function ClientDashboard() {
               </div>
             ) : (
               <div className="deliverables-list">
-
                 {clientDeliverables.map((deliverable) => (
                   <div
                     className="deliverable-item"
                     key={deliverable.id}
                   >
-
                     <div className="deliverable-main">
-
                       <div className="deliverable-icon">
                         <FileCheck2 size={20} />
                       </div>
 
                       <div>
-
                         <h3>{deliverable.name}</h3>
 
                         <div className="deliverable-meta">
-
                           <span>
                             Project:{" "}
                             {deliverable.project}
@@ -1090,7 +1012,6 @@ export default function ClientDashboard() {
                             Submitted:{" "}
                             {deliverable.submittedDate}
                           </span>
-
                         </div>
 
                         {deliverable.feedback && (
@@ -1099,13 +1020,10 @@ export default function ClientDashboard() {
                             {deliverable.feedback}
                           </div>
                         )}
-
                       </div>
-
                     </div>
 
                     <div className="deliverable-actions">
-
                       <span
                         className={`status-badge ${getStatusClass(
                           deliverable.status
@@ -1117,7 +1035,6 @@ export default function ClientDashboard() {
                       {deliverable.status ===
                         "Under Review" && (
                         <div className="review-buttons">
-
                           <button
                             className="approve-button"
                             onClick={() =>
@@ -1143,35 +1060,23 @@ export default function ClientDashboard() {
                             <RotateCcw size={16} />
                             Request Changes
                           </button>
-
                         </div>
                       )}
-
                     </div>
-
                   </div>
                 ))}
-
               </div>
             )}
-
           </div>
         </section>
 
-        {/* =====================================================
-            COMMUNICATION
-        ====================================================== */}
-
         <section className="client-section communication-section">
-
           <div className="communication-card">
-
             <div className="communication-icon">
               <MessageSquare size={24} />
             </div>
 
             <div className="communication-content">
-
               <h3>Need help?</h3>
 
               <p>
@@ -1179,7 +1084,6 @@ export default function ClientDashboard() {
                 for questions, clarifications or project
                 discussions.
               </p>
-
             </div>
 
             <button
@@ -1191,19 +1095,11 @@ export default function ClientDashboard() {
               <Send size={17} />
               Send Message
             </button>
-
           </div>
-
         </section>
 
-        {/* =====================================================
-            CLIENT SUMMARY
-        ====================================================== */}
-
         <section className="client-section summary-section">
-
           <div className="summary-card">
-
             <div className="summary-item">
               <span>Projects</span>
               <strong>{totalProjects}</strong>
@@ -1229,30 +1125,17 @@ export default function ClientDashboard() {
               <span>Pending Reviews</span>
               <strong>{pendingDeliverables}</strong>
             </div>
-
           </div>
-
         </section>
-
       </main>
-
-      {/* =====================================================
-          REQUIREMENT MODAL
-      ====================================================== */}
 
       {showRequirementModal && (
         <div className="modal-overlay">
-
           <div className="modal-card">
-
             <div className="modal-header">
-
               <div>
                 <h2>Submit Requirement</h2>
-
-                <p>
-                  Tell the team what you need.
-                </p>
+                <p>Tell the team what you need.</p>
               </div>
 
               <button
@@ -1263,16 +1146,11 @@ export default function ClientDashboard() {
               >
                 <X size={20} />
               </button>
-
             </div>
 
             <form onSubmit={handleRequirementSubmit}>
-
               <div className="form-group">
-
-                <label>
-                  Requirement Title
-                </label>
+                <label>Requirement Title</label>
 
                 <input
                   type="text"
@@ -1286,14 +1164,10 @@ export default function ClientDashboard() {
                   placeholder="Enter requirement title"
                   required
                 />
-
               </div>
 
               <div className="form-group">
-
-                <label>
-                  Description
-                </label>
+                <label>Description</label>
 
                 <textarea
                   value={requirementForm.description}
@@ -1308,14 +1182,10 @@ export default function ClientDashboard() {
                   rows={5}
                   required
                 />
-
               </div>
 
               <div className="form-group">
-
-                <label>
-                  Priority
-                </label>
+                <label>Priority</label>
 
                 <select
                   value={requirementForm.priority}
@@ -1330,11 +1200,9 @@ export default function ClientDashboard() {
                   <option value="Medium">Medium</option>
                   <option value="Low">Low</option>
                 </select>
-
               </div>
 
               <div className="modal-actions">
-
                 <button
                   type="button"
                   className="secondary-button"
@@ -1352,27 +1220,16 @@ export default function ClientDashboard() {
                   <Send size={17} />
                   Submit Requirement
                 </button>
-
               </div>
-
             </form>
-
           </div>
-
         </div>
       )}
 
-      {/* =====================================================
-          REQUEST CHANGES MODAL
-      ====================================================== */}
-
       {showFeedbackModal && selectedDeliverable && (
         <div className="modal-overlay">
-
           <div className="modal-card">
-
             <div className="modal-header">
-
               <div>
                 <h2>Request Changes</h2>
 
@@ -1391,16 +1248,11 @@ export default function ClientDashboard() {
               >
                 <X size={20} />
               </button>
-
             </div>
 
             <form onSubmit={handleRequestChanges}>
-
               <div className="form-group">
-
-                <label>
-                  Feedback
-                </label>
+                <label>Feedback</label>
 
                 <textarea
                   value={feedback}
@@ -1411,11 +1263,9 @@ export default function ClientDashboard() {
                   rows={6}
                   required
                 />
-
               </div>
 
               <div className="modal-actions">
-
                 <button
                   type="button"
                   className="secondary-button"
@@ -1435,27 +1285,16 @@ export default function ClientDashboard() {
                   <RotateCcw size={17} />
                   Request Changes
                 </button>
-
               </div>
-
             </form>
-
           </div>
-
         </div>
       )}
 
-      {/* =====================================================
-          MESSAGE MODAL
-      ====================================================== */}
-
       {showMessageModal && (
         <div className="modal-overlay">
-
           <div className="modal-card">
-
             <div className="modal-header">
-
               <div>
                 <h2>Contact Admin</h2>
 
@@ -1472,16 +1311,11 @@ export default function ClientDashboard() {
               >
                 <X size={20} />
               </button>
-
             </div>
 
             <form onSubmit={handleSendMessage}>
-
               <div className="form-group">
-
-                <label>
-                  Message
-                </label>
+                <label>Message</label>
 
                 <textarea
                   value={message}
@@ -1492,11 +1326,9 @@ export default function ClientDashboard() {
                   rows={6}
                   required
                 />
-
               </div>
 
               <div className="modal-actions">
-
                 <button
                   type="button"
                   className="secondary-button"
@@ -1514,16 +1346,11 @@ export default function ClientDashboard() {
                   <Send size={17} />
                   Send Message
                 </button>
-
               </div>
-
             </form>
-
           </div>
-
         </div>
       )}
-
     </div>
   );
 }

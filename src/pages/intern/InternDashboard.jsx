@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   AlertCircle,
   Bell,
   BellRing,
   CalendarDays,
   CheckCircle2,
-  ChevronDown,
   ClipboardCheck,
   Clock3,
   Code2,
   FileText,
   LayoutDashboard,
+  LogOut,
   Menu,
   MessageSquare,
   PlayCircle,
@@ -31,7 +32,10 @@ import {
   updateStore,
 } from "../../data/store";
 
-const CURRENT_INTERN_KEY = "shuroq_current_intern";
+import {
+  getCurrentUser,
+  logout,
+} from "../../auth/auth";
 
 const STATUS_OPTIONS = ["Pending", "In Progress"];
 
@@ -172,15 +176,11 @@ function isNotificationForIntern(notification, intern) {
 }
 
 export default function InternDashboard() {
-  const [store, setStore] = useState(() => getStore());
+  const navigate = useNavigate();
 
-  const [selectedInternId, setSelectedInternId] = useState(() => {
-    try {
-      return localStorage.getItem(CURRENT_INTERN_KEY) || "";
-    } catch {
-      return "";
-    }
-  });
+  const [store, setStore] = useState(() => getStore());
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   const [selectedTask, setSelectedTask] = useState(null);
 
@@ -194,6 +194,58 @@ export default function InternDashboard() {
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+
+    try {
+      await logout();
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      setCurrentUser(null);
+      setSelectedTask(null);
+      setMobileMenuOpen(false);
+      setNotificationsOpen(false);
+
+      navigate("/login", {
+        replace: true,
+      });
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadCurrentUser() {
+      try {
+        const user = await getCurrentUser();
+
+        if (mounted) {
+          setCurrentUser(user);
+        }
+      } catch (error) {
+        console.error("Unable to load current user:", error);
+
+        if (mounted) {
+          setCurrentUser(null);
+        }
+      } finally {
+        if (mounted) {
+          setAuthLoading(false);
+        }
+      }
+    }
+
+    loadCurrentUser();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     const unsubscribe = subscribeToStore((nextStore) => {
@@ -217,43 +269,37 @@ export default function InternDashboard() {
   const interns = store.interns || [];
 
   const selectedIntern = useMemo(() => {
-    if (!interns.length) return null;
+    if (!currentUser) return null;
 
-    const savedIntern = interns.find(
-      (intern) =>
-        String(intern.id) === String(selectedInternId)
-    );
+    const currentEmail = normalize(currentUser.email);
+    const currentUserId = String(currentUser.id || "");
 
-    if (savedIntern) return savedIntern;
+    const savedIntern = interns.find((intern) => {
+      const internEmail = normalize(intern.email);
 
-    const pavani = interns.find(
-      (intern) => normalize(intern.name) === "pavani"
-    );
-
-    return pavani || interns[0];
-  }, [interns, selectedInternId]);
-
-  useEffect(() => {
-    if (!selectedIntern) return;
-
-    const currentId = String(selectedIntern.id);
-
-    if (String(selectedInternId) !== currentId) {
-      setSelectedInternId(currentId);
-    }
-
-    try {
-      localStorage.setItem(
-        CURRENT_INTERN_KEY,
-        currentId
+      return (
+        (currentEmail && internEmail === currentEmail) ||
+        (currentUserId &&
+          String(intern.id || "") === currentUserId)
       );
-    } catch {
-      // Ignore localStorage errors.
+    });
+
+    if (savedIntern) {
+      return savedIntern;
     }
-  }, [selectedIntern, selectedInternId]);
+
+    return {
+      id: currentUser.id,
+      name: currentUser.name,
+      email: currentUser.email,
+      role: currentUser.role || "intern",
+      status: "Active",
+      skills: [],
+    };
+  }, [currentUser, interns]);
 
   const currentInternName =
-    selectedIntern?.name || "Intern";
+    selectedIntern?.name || currentUser?.name || "Intern";
 
   const myTasks = useMemo(() => {
     if (!selectedIntern) return [];
@@ -357,26 +403,6 @@ export default function InternDashboard() {
       averageProgress,
     };
   }, [myTasks]);
-
-  const handleInternChange = (event) => {
-    const nextId = event.target.value;
-
-    setSelectedInternId(nextId);
-
-    try {
-      localStorage.setItem(
-        CURRENT_INTERN_KEY,
-        nextId
-      );
-    } catch {
-      // Ignore localStorage errors.
-    }
-
-    setSelectedTask(null);
-    setTaskError("");
-    setTaskMessage("");
-    setNotificationsOpen(false);
-  };
 
   const openTask = (task) => {
     setSelectedTask(task);
@@ -620,6 +646,54 @@ export default function InternDashboard() {
     .charAt(0)
     .toUpperCase();
 
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-5">
+        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-5 text-center shadow-sm">
+          <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" />
+
+          <p className="text-sm font-semibold text-slate-800">
+            Loading your workspace...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser || currentUser.role !== "intern") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-5">
+        <div className="max-w-md rounded-2xl border border-red-200 bg-white p-6 text-center shadow-sm">
+          <AlertCircle
+            className="mx-auto text-red-500"
+            size={32}
+          />
+
+          <h2 className="mt-3 text-lg font-bold text-slate-900">
+            Unable to load intern workspace
+          </h2>
+
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Your authenticated account could not be verified as an intern.
+            Please sign in again.
+          </p>
+
+          <button
+            type="button"
+            onClick={() =>
+              navigate("/login", {
+                replace: true,
+              })
+            }
+            className="mt-5 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            Go to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* Desktop Sidebar */}
@@ -701,7 +775,7 @@ export default function InternDashboard() {
                 {profileInitial}
               </div>
 
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold">
                   {currentInternName}
                 </p>
@@ -711,6 +785,17 @@ export default function InternDashboard() {
                 </p>
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="mt-3 flex w-full items-center justify-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <LogOut size={18} />
+
+              {loggingOut ? "Logging out..." : "Logout"}
+            </button>
           </div>
         </div>
       </aside>
@@ -743,7 +828,6 @@ export default function InternDashboard() {
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Notification Bell */}
               <div className="relative">
                 <button
                   type="button"
@@ -789,34 +873,20 @@ export default function InternDashboard() {
                 )}
               </div>
 
-              {/* Intern selector */}
-              <div className="relative">
-                <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-                  <UserRound
-                    size={17}
-                    className="text-slate-500"
-                  />
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                <UserRound
+                  size={17}
+                  className="text-slate-500"
+                />
 
-                  <select
-                    value={selectedIntern?.id || ""}
-                    onChange={handleInternChange}
-                    className="max-w-32 cursor-pointer appearance-none bg-transparent pr-5 text-sm font-medium outline-none sm:max-w-44"
-                    aria-label="Select intern"
-                  >
-                    {interns.map((intern) => (
-                      <option
-                        key={intern.id}
-                        value={intern.id}
-                      >
-                        {intern.name}
-                      </option>
-                    ))}
-                  </select>
+                <div className="max-w-40 sm:max-w-52">
+                  <p className="truncate text-sm font-semibold text-slate-800">
+                    {currentInternName}
+                  </p>
 
-                  <ChevronDown
-                    size={15}
-                    className="pointer-events-none -ml-5 text-slate-400"
-                  />
+                  <p className="truncate text-[11px] text-slate-400">
+                    Signed-in account
+                  </p>
                 </div>
               </div>
             </div>
@@ -834,13 +904,12 @@ export default function InternDashboard() {
 
                 <div>
                   <h3 className="font-semibold text-blue-900">
-                    Viewing {currentInternName}'s
-                    workspace
+                    {currentInternName}'s workspace
                   </h3>
 
                   <p className="mt-1 text-sm leading-6 text-blue-700">
-                    Tasks assigned to this intern appear
-                    automatically in the My Tasks section.
+                    Your tasks are loaded automatically from your
+                    authenticated account.
                   </p>
                 </div>
               </div>
@@ -989,7 +1058,7 @@ export default function InternDashboard() {
             </div>
           </section>
 
-          {/* Notifications Section */}
+          {/* Notifications */}
           <section
             id="notifications"
             className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
@@ -1138,7 +1207,9 @@ export default function InternDashboard() {
                 </div>
 
                 <div>
-                  <h1 className="font-bold">Shuroq</h1>
+                  <h1 className="font-bold">
+                    Shuroq
+                  </h1>
 
                   <p className="text-xs text-slate-500">
                     Intern Workspace
@@ -1230,6 +1301,37 @@ export default function InternDashboard() {
                 }}
               />
             </nav>
+
+            <div className="border-t border-slate-200 p-4">
+              <div className="mb-3 flex items-center gap-3 rounded-xl bg-slate-50 p-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 font-semibold text-blue-700">
+                  {profileInitial}
+                </div>
+
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">
+                    {currentInternName}
+                  </p>
+
+                  <p className="truncate text-xs text-slate-500">
+                    {selectedIntern?.role || "Intern"}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <LogOut size={18} />
+
+                {loggingOut
+                  ? "Logging out..."
+                  : "Logout"}
+              </button>
+            </div>
           </aside>
         </div>
       )}
@@ -1674,8 +1776,7 @@ function NotificationItem({
       >
         {notification.type === "task" ? (
           <ClipboardCheck size={17} />
-        ) : notification.type ===
-          "deliverable" ? (
+        ) : notification.type === "deliverable" ? (
           <CheckCircle2 size={17} />
         ) : (
           <Bell size={17} />
@@ -1753,7 +1854,6 @@ function TaskModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
       <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        {/* Modal header */}
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5 sm:p-6">
           <div className="min-w-0">
             <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -1792,10 +1892,8 @@ function TaskModal({
           </button>
         </div>
 
-        {/* Modal body */}
         <div className="overflow-y-auto p-5 sm:p-6">
           <div className="space-y-6">
-            {/* Description */}
             <section>
               <div className="mb-2 flex items-center gap-2">
                 <FileText
@@ -1814,7 +1912,6 @@ function TaskModal({
               </p>
             </section>
 
-            {/* Task metadata */}
             <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <MetaCard
                 label="Priority"
@@ -1856,7 +1953,6 @@ function TaskModal({
               />
             </section>
 
-            {/* AI Details */}
             {isAI && (
               <section className="rounded-2xl border border-violet-200 bg-violet-50/60 p-5">
                 <div className="mb-5 flex items-start gap-3">
@@ -1935,7 +2031,6 @@ function TaskModal({
               </section>
             )}
 
-            {/* Project / assignment */}
             <section className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-xl border border-slate-200 p-4">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
@@ -1960,7 +2055,6 @@ function TaskModal({
               </div>
             </section>
 
-            {/* Locked state */}
             {locked && (
               <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
                 <AlertCircle
@@ -1982,7 +2076,6 @@ function TaskModal({
               </div>
             )}
 
-            {/* Progress */}
             <section>
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -2022,7 +2115,6 @@ function TaskModal({
               </div>
             </section>
 
-            {/* Status */}
             {!locked && (
               <section>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
@@ -2058,7 +2150,6 @@ function TaskModal({
               </section>
             )}
 
-            {/* Submission */}
             <section>
               <div className="mb-2 flex items-center gap-2">
                 <MessageSquare
@@ -2092,7 +2183,6 @@ function TaskModal({
               )}
             </section>
 
-            {/* Admin feedback */}
             {task.feedback && (
               <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
                 <div className="flex items-start gap-3">
@@ -2114,7 +2204,6 @@ function TaskModal({
               </section>
             )}
 
-            {/* Messages */}
             {error && (
               <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                 <AlertCircle
@@ -2139,7 +2228,6 @@ function TaskModal({
           </div>
         </div>
 
-        {/* Footer */}
         <div className="flex flex-col-reverse gap-3 border-t border-slate-200 bg-slate-50 p-5 sm:flex-row sm:justify-end">
           <button
             type="button"
